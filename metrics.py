@@ -5,8 +5,21 @@ import torchmetrics.classification
 
 
 class EnergyPointingGameBase(torchmetrics.Metric):
+    """
+    Base class for metrics based on EPG
 
+    Attributes:
+    include_undefined (bool): Whether to include undefined cases in metric calculation
+    fractions (list): Stores the fractions of positive attributions within bounding boxes
+    defined_idxs (list): Stores the indices of defined cases
+    """
     def __init__(self, include_undefined=True):
+        """
+        Initializes the EPG instance
+
+        Args:
+        include_undefined (bool): Whether to include undefined cases in metric calculation
+        """
         super().__init__()
 
         self.include_undefined = include_undefined
@@ -18,6 +31,12 @@ class EnergyPointingGameBase(torchmetrics.Metric):
         raise NotImplementedError
 
     def compute(self):
+        """
+        Computes the final metric value
+
+        Returns:
+        float: The mean of the fractions if available, else None
+        """
         if len(self.fractions) == 0:
             return None
         if self.include_undefined:
@@ -28,13 +47,30 @@ class EnergyPointingGameBase(torchmetrics.Metric):
 
 
 class BoundingBoxEnergyMultiple(EnergyPointingGameBase):
-
+    """
+    Class that computes EPG metric for multiple bounding boxes (Inherits from EnergyPointingGameBase)
+    """
     def __init__(self, include_undefined=True, min_box_size=None, max_box_size=None):
+        """
+        Initializes the BoundingBoxEnergyMultiple instance
+
+        Args:
+        include_undefined (bool): Whether to include undefined cases in metric calculation
+        min_box_size (int): Minimum size of the bounding box to be considered
+        max_box_size (int): Maximum size of the bounding box to be considered
+        """
         super().__init__(include_undefined=include_undefined)
         self.min_box_size = min_box_size
         self.max_box_size = max_box_size
 
     def update(self, attributions, bb_coordinates):
+        """
+        Updates the metric based on the provided attributions and bounding box coordinates
+
+        Args:
+        attributions (tensor): Model attributions
+        bb_coordinates (list of tuples): List of bounding box coordinates
+        """
         positive_attributions = attributions.clamp(min=0)
         bb_mask = torch.zeros_like(positive_attributions, dtype=torch.long)
         for coords in bb_coordinates:
@@ -58,14 +94,34 @@ class BoundingBoxEnergyMultiple(EnergyPointingGameBase):
 
 
 class BoundingBoxIoUMultiple(EnergyPointingGameBase):
-
+    """
+    Class that implements IoU metric for attributions and bounding boxes (Inherits from EnergyPointingGameBase)
+    """
     def __init__(self, include_undefined=True, iou_threshold=0.5, min_box_size=None, max_box_size=None):
+        """
+        Initializes the BoundingBoxIoUMultiple instance
+
+        Args:
+        include_undefined (bool): Whether to include undefined cases in metric calculation
+        iou_threshold (float): Threshold for binarizing attributions in IoU calculation
+        min_box_size (int): Minimum size of the bounding box to be considered
+        max_box_size (int): Maximum size of the bounding box to be considered
+        """
         super().__init__(include_undefined=include_undefined)
         self.iou_threshold = iou_threshold
         self.min_box_size = min_box_size
         self.max_box_size = max_box_size
 
     def binarize(self, attributions):
+        """
+        Binarize the attributions based on a threshold
+
+        Args:
+        attributions (tensor): Model attributions
+
+        Returns:
+        tensor: Binarized attributions
+        """
         attr_max = attributions.max()
         attr_min = attributions.min()
         if attr_max == 0:
@@ -75,6 +131,13 @@ class BoundingBoxIoUMultiple(EnergyPointingGameBase):
         return (attributions-attr_min)/(attr_max-attr_min)
 
     def update(self, attributions, bb_coordinates):
+        """
+        Updates the metric based on the provided attributions and bounding box coordinates
+
+        Args:
+        attributions (tensor): Model attributions
+        bb_coordinates (list of tuples): List of bounding box coordinates
+        """
         positive_attributions = attributions.clamp(min=0)
         bb_mask = torch.zeros_like(positive_attributions, dtype=torch.long)
         for coords in bb_coordinates:
@@ -102,7 +165,17 @@ class BoundingBoxIoUMultiple(EnergyPointingGameBase):
 Source: https://github.com/stevenstalder/NN-Explainer 
 """
 class MultiLabelMetrics(torchmetrics.Metric):
+    """
+    Class for computing standard classification metrics for multi-label tasks
+    """
     def __init__(self, num_classes, threshold):
+        """
+        Initializes the MultilabelMetrics instance
+
+        Args:
+        num_classes (int): Number of classes
+        threshold (float): Threshold for classifying logits as positive or negative
+        """
         super().__init__()
 
         self.num_classes = num_classes
@@ -114,6 +187,13 @@ class MultiLabelMetrics(torchmetrics.Metric):
         self.add_state("false_negatives", torch.tensor(0.0))
 
     def update(self, logits, labels):
+        """
+        Updates the metric counters based on model logits and labels
+
+        Args:
+        logits (tensor): Logits from the model
+        labels (tensor): True labels
+        """
         with torch.no_grad():
             for i, batch_sample_logits in enumerate(logits):
                 for j in range(self.num_classes):
@@ -129,6 +209,20 @@ class MultiLabelMetrics(torchmetrics.Metric):
                             self.true_negatives += 1.0
 
     def compute(self):
+        """
+        Computes the final classification metrics
+
+        Returns:
+        dict: Dictionary with following keys:
+                - Accuracy
+                - Precision
+                - Recall
+                - F-score
+                - True Positives
+                - True Negatives
+                - False Positives
+                - False Negatives
+        """
         self.accuracy = ((self.true_positives + self.true_negatives) / (self.true_positives +
                          self.true_negatives + self.false_positives + self.false_negatives))
         self.precision = (self.true_positives /
@@ -141,6 +235,14 @@ class MultiLabelMetrics(torchmetrics.Metric):
         return {'Accuracy': self.accuracy.item(), 'Precision': self.precision.item(), 'Recall': self.recall.item(), 'F-Score': self.f_score.item(), 'True Positives': self.true_positives.item(), 'True Negatives': self.true_negatives.item(), 'False Positives': self.false_positives.item(), 'False Negatives': self.false_negatives.item()}
 
     def save(self, model, classifier_type, dataset):
+        """
+        Saves the computed metrics to a file
+
+        Args:
+        model (str): Name of the model
+        classifier_type (str): Type of classifier
+        dataset (str): Name of dataset
+        """
         f = open(model + "_" + classifier_type + "_" +
                  dataset + "_" + "test_metrics.txt", "w")
         f.write("Accuracy: " + str(self.accuracy.item()) + "\n")

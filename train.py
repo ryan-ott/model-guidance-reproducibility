@@ -21,6 +21,22 @@ import fixup_resnet
 
 
 def eval_model(model, attributor, loader, num_batches, num_classes, loss_fn, writer=None, epoch=None):
+    """
+    Evaluate the model using the provided data loader and compute various metrics.
+
+    Args:
+    model (torch.nn.Module): The model to be evaluated
+    attributor (Callable): Function to compute attributions for model explanations
+    loader (torch.utils.data.DataLoader): DataLoader for evaluation data
+    num_batches (int): Number of batches in the DataLoader
+    num_classes (int): Number of classes in the dataset
+    loss_fn (Callable): Loss function used for evaluation
+    writer (optional): Tensorboard writer for logging metrics
+    epoch (int, optional): Current epoch number for logging
+
+    Returns:
+    dict: Dictionary containing the following eval metrics: F1, BB, IoU
+    """
     model.eval()
     f1_metric = metrics.MultiLabelMetrics(
         num_classes=num_classes, threshold=0.0)
@@ -68,16 +84,24 @@ def eval_model(model, attributor, loader, num_batches, num_classes, loss_fn, wri
 
 
 def main(args):
+    """
+    Main function to train and evaluate the model based on the provided arguments
+
+    Args:
+    args: Command-line arguments passed to the script
+    """
     utils.set_seed(args.seed)
 
     num_classes_dict = {"VOC2007": 20, "COCO2014":  80}
     num_classes = num_classes_dict[args.dataset]
 
+    #three options for backbone: vanilla, xdnn and bcos
     is_bcos = (args.model_backbone == "bcos")
     is_xdnn = (args.model_backbone == "xdnn")
     is_vanilla = (args.model_backbone == "vanilla")
         
-
+    # initialize model based on chosen backbone and 
+    # modify its final layer to match the number of classes
     if is_bcos:
         model = hubconf.resnet50(pretrained=True)
         model[0].fc = bcos.modules.bcosconv2d.BcosConv2d(
@@ -95,17 +119,20 @@ def main(args):
         layer_dict = {"Input": None, "Mid1": 3,
                       "Mid2": 4, "Mid3": 5, "Final": 6}
     elif is_vanilla:
+        #load pretrained weights from torchvision models
         model = torchvision.models.resnet50(
             weights=torchvision.models.ResNet50_Weights.IMAGENET1K_V1)
+        #replace last layer to number of classes in dataset
         model.fc = torch.nn.Linear(
                 in_features=model.fc.in_features, out_features=num_classes)
+        #unsure about purpose
         layer_dict = {"Input": None, "Mid1": 4,
                       "Mid2": 5, "Mid3": 6, "Final": 7}
     else:
         raise NotImplementedError
 
     layer_idx = layer_dict[args.layer]
-
+    #to restart training from last saved checkpoint. If none, start from pretrained.
     if args.model_path is not None:
         checkpoint = torch.load(args.model_path)
         model.load_state_dict(checkpoint["model"])
@@ -124,7 +151,7 @@ def main(args):
     optimize_explanation_str += "dilated" if args.box_dilation_percentage > 0 else ""
 
     out_name = model_prefix + "_" + optimize_explanation_str + "_attr" + str(args.attribution_method) + "_locloss" + str(args.localization_loss_fn) + "_orig" + orig_name + "_resnet50" + "_lr" + str(
-        args.learning_rate) + "_sll" + str(args.localization_loss_lambda) + "_layer" + str(args.layer)
+        args.learning_rate) + "_sll" + str(args.localizatio n_loss_lambda) + "_layer" + str(args.layer)
     if args.annotated_fraction < 1.0:
         out_name += f"limited{args.annotated_fraction}"
     if args.box_dilation_percentage > 0:
@@ -138,13 +165,15 @@ def main(args):
             log_dir=os.path.join(args.log_path, args.dataset, out_name))
     else:
         writer = None
-
+    
+    # Define transformations
     if is_bcos:
         transformer = bcos.data.transforms.AddInverse(dim=0)
     else:
         transformer = torchvision.transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[
             0.229, 0.224, 0.225])
-
+    
+    # Load datasets
     root = os.path.join(args.data_path, args.dataset, "processed")
     train_data = datasets.VOCDetectParsed(
         root=root, image_set="train", transform=transformer, annotated_fraction=args.annotated_fraction)
@@ -162,6 +191,7 @@ def main(args):
         total_count += 1
     print(f"Annotated: {annotation_count}, Total: {total_count}")
 
+    # Prepare DataLoader for training and evaluation
     train_loader = torch.utils.data.DataLoader(
         train_data, batch_size=args.train_batch_size, shuffle=True, num_workers=4, collate_fn=datasets.VOCDetectParsed.collate_fn)
     val_loader = torch.utils.data.DataLoader(
@@ -172,7 +202,8 @@ def main(args):
     num_train_batches = len(train_data) / args.train_batch_size
     num_val_batches = len(val_data) / args.eval_batch_size
     num_test_batches = len(test_data) / args.eval_batch_size
-
+    
+    # Define the loss function(s) and optimizer
     loss_fn = torch.nn.BCEWithLogitsLoss()
     loss_loc = losses.get_localization_loss(
         args.localization_loss_fn) if args.localization_loss_fn else None
@@ -197,6 +228,7 @@ def main(args):
     if args.pareto:
         pareto_front_tracker = utils.ParetoFrontModels()
 
+    # Begin training loop
     for e in tqdm(range(args.total_epochs)):
         total_loss = 0
         total_class_loss = 0
