@@ -11,10 +11,22 @@ GROUP_NAMES = np.array(['Land_on_Land', 'Land_on_Water', 'Water_on_Land', 'Water
 def get_label_mapping():
     return np.array(['Landbird', 'Waterbird'])
 
-# Other constants and helper functions remain unchanged
 
 class Waterbirds(torch.utils.data.Dataset):
+    """A dataset class for the Waterbirds dataset.
+    
+    It handles loading, preprocessing (including bounding box processing),
+    and returning data items for the Waterbirds dataset.
+    """
     def __init__(self, root, cfg, split='train', transform=None):
+        """Initialize the Waterbirds dataset.
+
+        Args:
+        root: Root directory for dataset
+        cfg: Configuration object with dataset parameters
+        split: Which split of the dataset to use ('train', 'val', 'test')
+        transform: Transformations to be applied to the images
+        """
         self.cfg = cfg
         self.original_root = os.path.expanduser(root)
         self.transform = transform
@@ -71,6 +83,14 @@ class Waterbirds(torch.utils.data.Dataset):
                 self.bbox_coords[i] = coords
 
     def __getitem__(self, index):
+        """Get a data item from the dataset at the specified index.
+
+        Args:
+        index: Index of the data item
+
+        Returns
+        dict: A dictionary containing the data item
+        """
         index = self.indices[index]
         path = self.data[index]
         label = self.labels[index]
@@ -105,5 +125,3 @@ class Waterbirds(torch.utils.data.Dataset):
 
     def __len__(self):
         return len(self.indices)
-
-# Other functions like get_loss_upweights remain unchanged
