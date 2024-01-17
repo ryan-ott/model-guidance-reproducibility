@@ -1,0 +1,8 @@
+{
+    "DATA": {
+        "WATERBIRDS_DIR": "waterbird_1.0_forest2water2/",
+        "SIZE": 224,
+        "REMOVE_BACKGROUND": false,
+        "ATTENTION_DIR": "NONE"
+    }
+}
