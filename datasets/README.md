@@ -18,16 +18,16 @@ There are two tasks performed on this dataset and the preprocessing has to be do
 1) Classifying birds (Landbird vs Waterbird)
    
    ```
-   python preprocess.py --data_root ./data --task birds --split train --save_path birds_processed/
-   python preprocess.py --data_root ./data --task birds --split val --save_path birds_processed/
-   python preprocess.py --data_root ./data --task birds --split test --save_path birds_processed/
+   python preprocess.py --data_root ./data --task birds --split train
+   python preprocess.py --data_root ./data --task birds --split val
+   python preprocess.py --data_root ./data --task birds --split test
    ```
 3) Classifying background (Land vs Water)
    
    ```
-   python preprocess.py --data_root ./data --task background --split train --save_path background_processed/
-   python preprocess.py --data_root ./data --task background --split val --save_path background_processed/
-   python preprocess.py --data_root ./data --task background --split test --save_path background_processed/
+   python preprocess.py --data_root ./data --task background --split train
+   python preprocess.py --data_root ./data --task background --split val
+   python preprocess.py --data_root ./data --task background --split test
    ```
 
 ### Acknowledgements
