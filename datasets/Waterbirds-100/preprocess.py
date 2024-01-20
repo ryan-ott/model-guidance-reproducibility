@@ -51,10 +51,11 @@ def preprocess_waterbirds(args):
         processed_data.append(data)
 
     # Save the processed data
-    os.makedirs(args.save_path, exist_ok=True)
-    torch.save(processed_data, os.path.join(args.save_path, f"{args.split}.pt"))
+    save_path = args.task + '_processed/'
+    os.makedirs(save_path, exist_ok=True)
+    torch.save(processed_data, os.path.join(save_path, f"{args.split}.pt"))
 
-    print(f"Processed data saved to {os.path.join(args.save_path, f'{args.split}.pt')}")
+    print(f"Processed data saved to {os.path.join(save_path, f'{args.split}.pt')}")
 
 def main():
 
@@ -62,7 +63,6 @@ def main():
     parser.add_argument("--data_root", type=str, required=True, help="Root path of the Waterbirds dataset")
     parser.add_argument("--task", type=str, choices=["birds", "background"], required=True, help="Whether to classify birds or background")
     parser.add_argument("--split", type=str, choices=["train", "val", "test"], required=True, help="Dataset split to process")
-    parser.add_argument("--save_path", type=str, required=True, help="Path to save the processed dataset")
     parser.add_argument("--resize_size", type=int, default=224, help="Size to resize images")
 
     args = parser.parse_args()
