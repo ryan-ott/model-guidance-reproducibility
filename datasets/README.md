@@ -14,11 +14,21 @@ For COCO2014, the dataset needs to be first downloaded using [download.sh](COCO2
 
 ### Waterbirds-100
 
-```
-python preprocess.py --data_root ./data --split train
-python preprocess.py --data_root ./data --split val
-python preprocess.py --data_root ./data --split test
-```
+There are two tasks performed on this dataset and the preprocessing has to be done separately for each task:
+1) Classifying birds (Landbird vs Waterbird)
+   
+   ```
+   python preprocess.py --data_root ./data --task birds --split train --save_path birds_processed/
+   python preprocess.py --data_root ./data --task birds --split val --save_path birds_processed/
+   python preprocess.py --data_root ./data --task birds --split test --save_path birds_processed/
+   ```
+3) Classifying background (Land vs Water)
+   
+   ```
+   python preprocess.py --data_root ./data --task background --split train --save_path background_processed/
+   python preprocess.py --data_root ./data --task background --split val --save_path background_processed/
+   python preprocess.py --data_root ./data --task background --split test --save_path background_processed/
+   ```
 
 ### Acknowledgements
 
