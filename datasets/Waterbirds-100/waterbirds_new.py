@@ -6,29 +6,22 @@ import pandas as pd
 import numpy as np
 from PIL import Image
 
-GROUP_NAMES = np.array(['Land_on_Land', 'Land_on_Water', 'Water_on_Land', 'Water_on_Water'])
+GROUP_NAMES = np.array(['Landbird_on_Land', 'Landbird_on_Water', 'Waterbird_on_Land', 'Waterbird_on_Water'])
 
-def get_label_mapping():
-    return np.array(['Landbird', 'Waterbird'])
+def get_label_mapping(task):
+    if task == 'birds':
+        return np.array(['Landbird', 'Waterbird'])
+    elif task == 'background':
+        return np.array(['Land', 'Water'])
+    else:
+        raise ValueError(f"Unrecognized task type specified: {task}. Expected 'background' or 'birds'.")
 
 
 class Waterbirds(torch.utils.data.Dataset):
-    """A dataset class for the Waterbirds dataset.
-    
-    It handles loading, preprocessing (including bounding box processing),
-    and returning data items for the Waterbirds dataset.
-    """
-    def __init__(self, root, cfg, split='train', transform=None):
-        """Initialize the Waterbirds dataset.
-
-        Args:
-        root: Root directory for dataset
-        cfg: Configuration object with dataset parameters
-        split: Which split of the dataset to use ('train', 'val', 'test')
-        transform: Transformations to be applied to the images
-        """
+    def __init__(self, root, task, cfg, split='train', transform=None):
         self.cfg = cfg
         self.original_root = os.path.expanduser(root)
+        self.task = task
         self.transform = transform
         self.split = split
         self.root = os.path.join(self.original_root, cfg.DATA.WATERBIRDS_DIR)
@@ -40,14 +33,12 @@ class Waterbirds(torch.utils.data.Dataset):
         # metadata
         self.metadata_df = pd.read_csv(os.path.join(self.root, 'metadata.csv'))
 
-        # Get the y values
-        self.labels = self.metadata_df['y'].values
         self.num_classes = 2
 
         self.confounder_array = self.metadata_df['place'].values
         self.n_confounders = 1
         self.n_groups = pow(2, 2)
-        self.group_array = (self.labels*(self.n_groups/2) + self.confounder_array).astype('int')
+        self.group_array = (self.metadata_df['y'].values*(self.n_groups/2) + self.confounder_array).astype('int')
 
         # Extract filenames and splits
         self.filename_array = self.metadata_df['img_filename'].values
@@ -59,6 +50,12 @@ class Waterbirds(torch.utils.data.Dataset):
         mask = self.split_array == self.split_dict[self.split]
         num_split = np.sum(mask)
         self.indices = np.where(mask)[0]
+
+        # Assign labels based on task type
+        if task == 'background':
+            self.labels = [(group_label == 1 or group_label == 3) for group_label in self.group_array]
+        elif task == 'birds':
+            self.labels = self.metadata_df['y'].values
 
         self.labels = torch.Tensor(self.labels)
         self.group_array = torch.Tensor(self.group_array)
@@ -75,22 +72,18 @@ class Waterbirds(torch.utils.data.Dataset):
         self.group_labels_split = torch.Tensor(self.group_labels_split)
 
         if self.return_bbox:
-            bboxes = pd.read_csv(os.path.join(self.original_root, 'CUB_200_2011', 'bounding_boxes.txt'), header=None)
-            self.bbox_coords = np.zeros((self.data.shape[0], 4))
-            for i, row in enumerate(bboxes.values):
-                coords = row[0].split(' ')[1:]
-                coords = np.array(coords).astype(float)
-                self.bbox_coords[i] = coords
+            # Read bounding boxes into a dictionary
+            bbox_df = pd.read_csv(os.path.join(self.original_root, 'CUB_200_2011', 'bounding_boxes.txt'), sep=" ", header=None, index_col=0)
+            bbox_dict = bbox_df.to_dict(orient='index')
+
+            # Map each image to its bounding box using metadata 'img_id'
+            self.bbox_coords = np.zeros((len(self.data), 4))
+            for i, img_id in enumerate(self.metadata_df['img_id']):
+                if int(img_id) in bbox_dict:
+                    coords = bbox_dict[int(img_id)]
+                    self.bbox_coords[i] = np.array([coords[1], coords[2], coords[3], coords[4]])
 
     def __getitem__(self, index):
-        """Get a data item from the dataset at the specified index.
-
-        Args:
-        index: Index of the data item
-
-        Returns
-        dict: A dictionary containing the data item
-        """
         index = self.indices[index]
         path = self.data[index]
         label = self.labels[index]
