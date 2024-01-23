@@ -250,3 +250,27 @@ class MultiLabelMetrics(torchmetrics.Metric):
         f.write("Recall: " + str(self.recall.item()) + "\n")
         f.write("F-Score: " + str(self.f_score.item()))
         f.close()
+
+
+class GroupedAccuracyMetric(torchmetrics.Metric):
+    def __init__(self, group_names):
+        super().__init__()
+        self.group_names = group_names
+        self.add_state("group_correct", default=torch.zeros(len(group_names)))
+        self.add_state("group_total", default=torch.zeros(len(group_names)))
+
+    def update(self, logits, labels, groups):
+        _, predictions = torch.max(logits, 1)
+        for i, group in enumerate(groups):
+            group_idx = int(group.item())
+            self.group_correct[group_idx] += (predictions[i] == labels[i]).item()
+            self.group_total[group_idx] += 1
+
+    def compute(self):
+        group_accuracies = {}
+        for i, group_name in enumerate(self.group_names):
+            if self.group_total[i] > 0:
+                group_accuracies[group_name] = self.group_correct[i] / self.group_total[i]
+            else:
+                group_accuracies[group_name] = torch.tensor(0.0)
+        return group_accuracies
