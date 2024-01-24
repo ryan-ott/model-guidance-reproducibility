@@ -201,11 +201,16 @@ def main(args):
     else:
         transformer = torchvision.transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[
             0.229, 0.224, 0.225])
+
+    train_transformer = transforms.Compose(
+        [transforms.RandomResizedCrop(size=(224, 224)), transforms.RandomHorizontalFlip()] +
+        [transformer]
+    )
     
     # Load datasets
     root = os.path.join(args.data_path, args.dataset, "processed")
     train_data = datasets.VOCDetectParsed(
-        root=root, image_set="train", transform=transformer, annotated_fraction=args.annotated_fraction)
+        root=root, image_set="train", transform=train_transformer, annotated_fraction=args.annotated_fraction)
     val_data = datasets.VOCDetectParsed(
         root=root, image_set="val", transform=transformer)
     test_data = datasets.VOCDetectParsed(
