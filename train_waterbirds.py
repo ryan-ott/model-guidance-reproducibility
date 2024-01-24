@@ -4,7 +4,6 @@ import argparse
 import torchvision
 from tqdm import tqdm
 import datasets
-import argparse
 import torch.utils.tensorboard
 import utils
 import copy
