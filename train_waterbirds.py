@@ -368,7 +368,7 @@ parser.add_argument("--save_path", type=str, default="checkpoints/", help="Path 
 parser.add_argument("--seed", type=int, default=0, help="Random seed to use.")
 parser.add_argument("--train_batch_size", type=int, default=16, help="Batch size to use for training.")
 parser.add_argument("--dataset", type=str, required=True,
-                    choices=["VOC2007", "COCO2014"], help="Dataset to train on.")
+                    choices=["VOC2007", "COCO2014", "Waterbirds-100"], help="Dataset to train on.")
 parser.add_argument("--localization_loss_lambda", type=float, default=1.0, help="Lambda to use to weight localization loss.")
 parser.add_argument("--layer", type=str, default="Input",
                     choices=["Input", "Final", "Mid1", "Mid2", "Mid3"], help="Layer of the model to compute and optimize attributions on.")
