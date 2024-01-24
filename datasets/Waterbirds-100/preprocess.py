@@ -22,7 +22,7 @@ def dict_to_obj(d):
 
 def preprocess_waterbirds(args):
     # Read the config file
-    with open('config.json', 'r') as f:
+    with open('./datasets/Waterbirds-100/config.json', 'r') as f:
         cfg_dict = json.load(f)
 
     cfg = dict_to_obj(cfg_dict)
