@@ -38,7 +38,7 @@ def set_seed(seed):
     np.random.seed(seed)
 
 
-def filter_bbs(bb_coordinates, gt):
+def filter_bbs(bb_coordinates, gt, waterbirds=False,seg=False):
     """
     Filters bounding box coordinates based on ground truth class
 
@@ -46,11 +46,32 @@ def filter_bbs(bb_coordinates, gt):
     bb_coordinates (list of tuples): List of bounding box coordinates
     gt (int): Ground truth class used to filter bounding boxes
     """
-    bb_list = []
-    for bb in bb_coordinates:
-        if bb[0] == gt:
-            bb_list.append(bb[1:])
-    return bb_list
+    if waterbirds:
+        # bb_list = []
+        # print("TEST FILTER BBS:")
+        # print("bb_coordinates:", bb_coordinates)
+        if bb_coordinates[0] == gt:
+            bb_list = [bb_coordinates[1:].long()]
+            # bb_list.append(bb_coordinates[1:])
+            # print("bb_list:", bb_list)
+        return bb_list
+    elif seg:
+        bb_coordinates = bb_coordinates.squeeze().cuda(device='cuda:1')
+        mask = torch.zeros_like(bb_coordinates, device='cuda:1')
+        mask[bb_coordinates==(gt+1)]=1
+        return mask
+    else:
+        bb_list = []
+        # print("TEST FILTER BBS:")
+        # print("bb_coordinates:", bb_coordinates)
+        for bb in bb_coordinates:
+            # print(" bb:", bb)
+            # print(" bb.shape:", bb.shape)
+            # print(" bb[0]:", bb[0])
+            # print("  gt:", gt)
+            if bb[0] == gt:
+                bb_list.append(bb[1:])
+        return bb_list
 
 
 class BestMetricTracker:
@@ -241,3 +262,21 @@ def update_val_metrics(metric_vals):
         metric_vals["Val-BB-Loc"] = metric_vals.pop("BB-Loc")
         metric_vals["Val-BB-IoU"] = metric_vals.pop("BB-IoU")
     return metric_vals
+
+def get_bb_area(bb_list):
+    """
+    Returns the area of each bounding box in the list
+
+    Args:
+    bb_list (list of lists): List containing bounding box coordinates. Each bounding box represented as [xmin, ymin, xmax, ymax]
+
+    Returns:
+    list: List containing the area of each bounding box
+    """
+    area = 0.0
+    for bb_coord in bb_list:
+        xmin, ymin, xmax, ymax = bb_coord
+        width = xmax - xmin
+        height = ymax - ymin
+        area += width*height
+    return area

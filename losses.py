@@ -13,6 +13,8 @@ def get_localization_loss(loss_name):
     """
     loss_map = {
         "Energy": EnergyPointingGameBBMultipleLoss,
+        "Energy_mod": ModifiedEnergyPointingGameBBMultipleLoss,
+        "Energy_seg": EnergyPointingGameSegMultipleLoss,
         "L1": GradiaBBMultipleLoss,
         "RRR": RRRBBMultipleLoss,
         "PPCE": HAICSBBMultipleLoss
@@ -85,7 +87,40 @@ class EnergyPointingGameBBMultipleLoss:
             return 1-num
         return 1-num/den
 
+class ModifiedEnergyPointingGameBBMultipleLoss:
+    """
+    Class implementing Energy (EPG based) loss for bounding boxes
+    """
+    def __init__(self):
+        """
+        Initialize an instance of EnergyPointingGameBBMultipleLoss
+        """
+        super().__init__()
+        self.only_positive = False
+        self.binarize = False
 
+    def __call__(self, attributions, bb_coordinates, area, alpha):
+        """
+        Compute the modified Energy loss
+
+        Args:
+        attributions (tensor): Attributions from the model
+        bb_coordinates (list of tuples): List of bounding box coordinates
+        area (float): Area of the bb
+        Returns:
+        float: Computed loss
+        """
+        pos_attributions = attributions.clamp(min=0)
+        bb_mask = torch.zeros_like(pos_attributions, dtype=torch.long)
+        for coords in bb_coordinates:
+            xmin, ymin, xmax, ymax = coords
+            bb_mask[ymin:ymax, xmin:xmax] = 1
+        num = pos_attributions[torch.where(bb_mask == 1)].sum()
+        den = pos_attributions.sum()
+        
+        if den < 1e-7:
+            return 1-(num/(area**alpha))
+        return 1-((num/den)/(area**alpha))
 
 class RRRBBMultipleLoss(BBMultipleLoss):
     """
@@ -131,3 +166,34 @@ class HAICSBBMultipleLoss(BBMultipleLoss):
         bb_mask = self.get_bb_mask(bb_coordinates, attributions.shape)
         attributions_in_box = attributions[torch.where(bb_mask == 1)]
         return self.bce_loss(attributions_in_box, torch.ones_like(attributions_in_box))
+
+
+class EnergyPointingGameSegMultipleLoss:
+    """
+    Class implementing Energy (EPG based) loss for bounding boxes
+    """
+    def __init__(self):
+        """
+        Initialize an instance of EnergyPointingGameBBMultipleLoss
+        """
+        super().__init__()
+        self.only_positive = False
+        self.binarize = False
+
+    def __call__(self, attributions, bb_coordinates):
+        """
+        Compute the Energy loss
+
+        Args:
+        attributions (tensor): Attributions from the model
+        bb_coordinates (list of tuples): List of bounding box coordinates
+
+        Returns:
+        float: Computed loss
+        """
+        pos_attributions = attributions.clamp(min=0)
+        num = pos_attributions[torch.where(bb_coordinates.cuda(device='cuda:1') == 1)].sum()
+        den = pos_attributions.sum()
+        if den < 1e-7:
+            return 1-num
+        return 1-num/den

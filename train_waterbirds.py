@@ -17,6 +17,9 @@ import bcos
 import bcos.modules
 import bcos.data
 import fixup_resnet
+import torchvision.transforms as transforms
+
+torch.cuda.set_device('cuda:1')
 
 GROUP_NAMES = ['Landbird_on_Land', 'Landbird_on_Water', 'Waterbird_on_Land', 'Waterbird_on_Water']
 
@@ -62,10 +65,11 @@ def eval_model(model, attributor, loader, num_batches, num_classes, loss_fn, wri
     grouped_accuracy = metrics.GroupedAccuracyMetric(group_names)
     total_loss = 0
     for batch_idx, data in enumerate(tqdm(loader)):
-        test_X, test_y, test_bbs, groups = data['image'], data['label'], data['bbox'], data['group']
+        # test_X, test_y, test_bbs, groups = data['image'], data['label'], data['bbox'], data['group']
+        test_X, test_y, test_bbs, groups = data
         test_X.requires_grad = True
-        test_X = test_X.cuda()
-        test_y = test_y.cuda()
+        test_X = test_X.cuda(device='cuda:1')
+        test_y = test_y.cuda(device='cuda:1')
         logits, features = model(test_X)
         loss = loss_fn(logits, test_y).detach()
         total_loss += loss
@@ -79,14 +83,16 @@ def eval_model(model, attributor, loader, num_batches, num_classes, loss_fn, wri
                 for pred_idx, pred in enumerate(class_target):
                     attributions = attributor(
                         features, logits, pred, img_idx).detach().squeeze(0).squeeze(0)
-                    bb_list = utils.filter_bbs(test_bbs[img_idx], pred)
+                    bb_list = utils.filter_bbs(test_bbs[img_idx].cuda(device='cuda:1'), pred, waterbirds=True)
+                    #print(f"Shape of a single bounding box tensor: {test_bbs[img_idx].shape}")
+                    #print(f"Content of a single bounding box tensor: {test_bbs[img_idx]}")
                     bb_metric.update(attributions, bb_list)
                     iou_metric.update(attributions, bb_list)
 
-    acc_vals = acc_metric.compute()
+    metric_vals = acc_metric.compute()
     group_acc_vals = grouped_accuracy.compute()
 
-    metric_vals = {**acc_vals, **group_acc_vals}
+    # metric_vals = {**acc_vals, **group_acc_vals}
     
     if attributor:
         bb_metric_vals = bb_metric.compute()
@@ -95,6 +101,7 @@ def eval_model(model, attributor, loader, num_batches, num_classes, loss_fn, wri
         metric_vals["BB-IoU"] = iou_metric_vals
     metric_vals["Average-Loss"] = total_loss.item()/num_batches        
     print(f"Validation Metrics: {metric_vals}")
+    print(f"Group accuracies: {group_acc_vals}")
     model.train()
     if writer is not None:
         writer.add_scalar("val_loss", total_loss.item()/num_batches, epoch)
@@ -103,10 +110,10 @@ def eval_model(model, attributor, loader, num_batches, num_classes, loss_fn, wri
         writer.add_scalar("recall", metric_vals["Recall"], epoch)
         writer.add_scalar("fscore", metric_vals["F-Score"], epoch)
         # Group accuracies
-        writer.add_scalar("G1", metric_vals[group_names[0]])
-        writer.add_scalar("G2", metric_vals[group_names[1]])
-        writer.add_scalar("G3", metric_vals[group_names[2]])
-        writer.add_scalar("G4", metric_vals[group_names[3]])
+        writer.add_scalar("G1", group_acc_vals[group_names[0]], epoch)
+        writer.add_scalar("G2", group_acc_vals[group_names[1]], epoch)
+        writer.add_scalar("G3", group_acc_vals[group_names[2]], epoch)
+        writer.add_scalar("G4", group_acc_vals[group_names[3]], epoch)
         if attributor:
             writer.add_scalar("bbloc", metric_vals["BB-Loc"], epoch)
             writer.add_scalar("bbiou", metric_vals["BB-IoU"], epoch)
@@ -166,7 +173,7 @@ def main(args):
         checkpoint = torch.load(args.model_path)
         model.load_state_dict(checkpoint["model"])
 
-    model = model.cuda()
+    model = model.cuda(device='cuda:1')
     model.train()
 
     orig_name = os.path.basename(
@@ -186,7 +193,7 @@ def main(args):
     if args.box_dilation_percentage > 0:
         out_name += f"_dilation{args.box_dilation_percentage}"
 
-    save_path = os.path.join(args.save_path, args.dataset, out_name)
+    save_path = os.path.join(args.save_path, args.dataset, args.task, out_name)
     os.makedirs(save_path, exist_ok=True)
 
     if args.log_path is not None:
@@ -208,12 +215,15 @@ def main(args):
     )
     
     # Load datasets
-    root = os.path.join(args.data_path, args.dataset, "processed")
-    train_data = datasets.VOCDetectParsed(
+    if args.task == 'birds':
+        root = os.path.join(args.data_path, args.dataset, "birds_processed/")
+    else:
+        root = os.path.join(args.data_path, args.dataset, "background_processed/")
+    train_data = datasets.WaterbirdsDetectParsed(
         root=root, image_set="train", transform=train_transformer, annotated_fraction=args.annotated_fraction)
-    val_data = datasets.VOCDetectParsed(
+    val_data = datasets.WaterbirdsDetectParsed(
         root=root, image_set="val", transform=transformer)
-    test_data = datasets.VOCDetectParsed(
+    test_data = datasets.WaterbirdsDetectParsed(
         root=root, image_set="test", transform=transformer)
 
     print(f"Train data size: {len(train_data)}")
@@ -227,11 +237,11 @@ def main(args):
 
     # Prepare DataLoader for training and evaluation
     train_loader = torch.utils.data.DataLoader(
-        train_data, batch_size=args.train_batch_size, shuffle=True, num_workers=4, collate_fn=datasets.VOCDetectParsed.collate_fn)
+        train_data, batch_size=args.train_batch_size, shuffle=True, num_workers=4, collate_fn=datasets.WaterbirdsDetectParsed.collate_fn)
     val_loader = torch.utils.data.DataLoader(
-        val_data, batch_size=args.eval_batch_size, shuffle=False, num_workers=4, collate_fn=datasets.VOCDetectParsed.collate_fn)
+        val_data, batch_size=args.eval_batch_size, shuffle=False, num_workers=4, collate_fn=datasets.WaterbirdsDetectParsed.collate_fn)
     test_loader = torch.utils.data.DataLoader(
-        test_data, batch_size=args.eval_batch_size, shuffle=False, num_workers=4, collate_fn=datasets.VOCDetectParsed.collate_fn)
+        test_data, batch_size=args.eval_batch_size, shuffle=False, num_workers=4, collate_fn=datasets.WaterbirdsDetectParsed.collate_fn)
 
     num_train_batches = len(train_data) / args.train_batch_size
     num_val_batches = len(val_data) / args.eval_batch_size
@@ -274,13 +284,13 @@ def main(args):
         total_class_loss = 0
         total_localization_loss = 0
 
-        for batch_idx, (train_X, train_y, train_bbs) in enumerate(tqdm(train_loader)):
+        for batch_idx, (train_X, train_y, train_bbs, groups) in enumerate(tqdm(train_loader)):
             batch_loss = 0
             localization_loss = 0
             optimizer.zero_grad()
             train_X.requires_grad = True
-            train_X = train_X.cuda()
-            train_y = train_y.cuda()
+            train_X = train_X.cuda(device='cuda:1')
+            train_y = train_y.cuda(device='cuda:1')
             logits, features = model_activator(train_X)
             loss = loss_fn(logits, train_y)
             batch_loss += loss
@@ -294,7 +304,7 @@ def main(args):
                     if train_bbs[img_idx] is None:
                         continue
                     bb_list = utils.filter_bbs(
-                        train_bbs[img_idx], gt_classes[img_idx])
+                        train_bbs[img_idx].cuda(device='cuda:1'), gt_classes[img_idx], waterbirds=True)
                     if args.box_dilation_percentage > 0:
                         bb_list = utils.enlarge_bb(
                             bb_list, percentage=args.box_dilation_percentage)
@@ -350,7 +360,7 @@ def main(args):
     acc_best_metric_vals = utils.update_val_metrics(acc_best_metric_vals)
     model.load_state_dict(acc_best_model_dict)
     acc_best_metrics = eval_model(model_activator, eval_attributor, test_loader,
-                                 num_test_batches, num_classes, loss_fn)
+                                 num_test_batches, num_classes, loss_fn, group_names=GROUP_NAMES)
     acc_best_metrics.update(acc_best_metric_vals)
     acc_best_metrics.update(
         {"model": acc_best_model_dict, "epochs": acc_best_epoch+1} | vars(args))
@@ -358,10 +368,11 @@ def main(args):
     torch.save(final_metrics, os.path.join(
         save_path, f"model_checkpoint_final_{e+1}.pt"))
     torch.save(acc_best_metrics, os.path.join(
-        save_path, f"model_checkpoint_f1_best.pt"))
+        save_path, f"model_checkpoint_acc_best.pt"))
 
 
 parser = argparse.ArgumentParser()
+parser.add_argument("--task", type=str, choices=["birds", "background"], required=True, help="Whether to use conventional or reversed task.")
 parser.add_argument("--model_backbone", type=str, choices=["bcos", "xdnn", "vanilla"], required=True, help="Model backbone to train.")
 parser.add_argument("--model_path", type=str, default=None, help="Path to checkpoint to fine tune from. When None, a model is trained starting from ImageNet pre-trained weights.")
 parser.add_argument("--data_path", type=str, default="datasets/", help="Path to datasets.")
