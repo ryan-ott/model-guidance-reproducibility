@@ -104,7 +104,7 @@ class AttributorBase:
                 attributions, interpolate_dims=self.interpolate_dims, interpolate_mode="bilinear")
         return attributions
 
-    def check_binarize(self, attributions):
+    def check_binarize(self, attributions):  # normalize attributions into the range between 0 and 1
         """
         Binarize attributions if binarization is enabled
 
