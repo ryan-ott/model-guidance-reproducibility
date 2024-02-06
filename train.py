@@ -249,7 +249,6 @@ def main(args):
                     bb_list = utils.filter_bbs(
                         train_bbs[img_idx], gt_classes[img_idx])
                     #print("BB_LIST:", bb_list)
-                    print()
                     if args.box_dilation_percentage > 0:
                         bb_list = utils.enlarge_bb(
                             bb_list, percentage=args.box_dilation_percentage)
