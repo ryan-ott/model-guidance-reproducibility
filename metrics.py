@@ -26,6 +26,7 @@ class EnergyPointingGameBase(torchmetrics.Metric):
 
         self.add_state("fractions", default=[])
         self.add_state("defined_idxs", default=[])
+        self.add_state("bbox_sizes", default=[])
 
     def update(self, attributions, mask_or_coords):
         raise NotImplementedError
@@ -74,6 +75,7 @@ class BoundingBoxEnergyMultiple(EnergyPointingGameBase):
         positive_attributions = attributions.clamp(min=0)
         bb_mask = torch.zeros_like(positive_attributions, dtype=torch.long)
         for coords in bb_coordinates:
+            # print("coords: ", coords)
             xmin, ymin, xmax, ymax = coords
             bb_mask[ymin:ymax, xmin:xmax] = 1
         bb_size = len(torch.where(bb_mask == 1)[0])
@@ -87,10 +89,58 @@ class BoundingBoxEnergyMultiple(EnergyPointingGameBase):
         assert energy_total >= 0, energy_total
         if energy_total < 1e-7:
             self.fractions.append(torch.tensor(0.0))
+            self.bbox_sizes.append(torch.tensor(0.0))
         else:
             self.defined_idxs.append(len(self.fractions))
             self.fractions.append(energy_inside/energy_total)
+            self.bbox_sizes.append(bb_size)
 
+class SegmentationEnergyMultiple(EnergyPointingGameBase):
+    """
+    Class that computes EPG metric for multiple bounding boxes (Inherits from EnergyPointingGameBase)
+    """
+    def __init__(self, include_undefined=True, min_box_size=None, max_box_size=None):
+        """
+        Initializes the BoundingBoxEnergyMultiple instance
+
+        Args:
+        include_undefined (bool): Whether to include undefined cases in metric calculation
+        min_box_size (int): Minimum size of the bounding box to be considered
+        max_box_size (int): Maximum size of the bounding box to be considered
+        """
+        super().__init__(include_undefined=include_undefined)
+        self.min_box_size = min_box_size
+        self.max_box_size = max_box_size
+
+    def update(self, attributions, bb_coordinates):
+        """
+        Updates the metric based on the provided attributions and bounding box coordinates
+
+        Args:
+        attributions (tensor): Model attributions
+        bb_coordinates (list of tuples): List of bounding box coordinates
+        """
+        positive_attributions = attributions.clamp(min=0)
+        bb_mask = torch.zeros_like(positive_attributions, dtype=torch.long, device='cuda')
+        for coords in bb_coordinates:
+            mask = coords[0].squeeze()
+            bb_mask[mask==1] = 1
+        bb_size = len(torch.where(bb_mask == 1)[0])
+        if self.min_box_size is not None and bb_size < self.min_box_size:
+            return
+        if self.max_box_size is not None and bb_size >= self.max_box_size:
+            return
+        energy_inside = positive_attributions[torch.where(bb_mask == 1)].sum()
+        energy_total = positive_attributions.sum()
+        assert energy_inside >= 0, energy_inside
+        assert energy_total >= 0, energy_total
+        if energy_total < 1e-7:
+            self.fractions.append(torch.tensor(0.0))
+            self.bbox_sizes.append(torch.tensor(0.0))
+        else:
+            self.defined_idxs.append(len(self.fractions))
+            self.fractions.append(energy_inside/energy_total)
+            self.bbox_sizes.append(bb_size)
 
 
 class BoundingBoxIoUMultiple(EnergyPointingGameBase):
@@ -160,6 +210,75 @@ class BoundingBoxIoUMultiple(EnergyPointingGameBase):
         else:
             self.defined_idxs.append(len(self.fractions))
             self.fractions.append(torch.tensor(intersection_area/union_area))
+
+class SegmentationIoUMultiple(EnergyPointingGameBase):
+    """
+    Class that implements IoU metric for attributions and bounding boxes (Inherits from EnergyPointingGameBase)
+    """
+    def __init__(self, include_undefined=True, iou_threshold=0.5, min_box_size=None, max_box_size=None):
+        """
+        Initializes the BoundingBoxIoUMultiple instance
+
+        Args:
+        include_undefined (bool): Whether to include undefined cases in metric calculation
+        iou_threshold (float): Threshold for binarizing attributions in IoU calculation
+        min_box_size (int): Minimum size of the bounding box to be considered
+        max_box_size (int): Maximum size of the bounding box to be considered
+        """
+        super().__init__(include_undefined=include_undefined)
+        self.iou_threshold = iou_threshold
+        self.min_box_size = min_box_size
+        self.max_box_size = max_box_size
+
+    def binarize(self, attributions):
+        """
+        Binarize the attributions based on a threshold
+
+        Args:
+        attributions (tensor): Model attributions
+
+        Returns:
+        tensor: Binarized attributions
+        """
+        attr_max = attributions.max()
+        attr_min = attributions.min()
+        if attr_max == 0:
+            return attributions
+        if torch.abs(attr_max-attr_min) < 1e-7:
+            return attributions/attr_max
+        return (attributions-attr_min)/(attr_max-attr_min)
+
+    def update(self, attributions, bb_coordinates):
+        """
+        Updates the metric based on the provided attributions and bounding box coordinates
+
+        Args:
+        attributions (tensor): Model attributions
+        bb_coordinates (list of tuples): List of bounding box coordinates
+        """
+        positive_attributions = attributions.clamp(min=0)
+        bb_mask = torch.zeros_like(positive_attributions, dtype=torch.long, device='cuda')
+        for coords in bb_coordinates:
+            mask = coords[0].squeeze()
+            bb_mask[mask==1] = 1
+        bb_size = len(torch.where(bb_mask == 1)[0])
+        if self.min_box_size is not None and bb_size < self.min_box_size:
+            return
+        if self.max_box_size is not None and bb_size >= self.max_box_size:
+            return
+        binarized_attributions = self.binarize(positive_attributions)
+        intersection_area = len(torch.where(
+            (binarized_attributions > self.iou_threshold) & (bb_mask == 1))[0])
+        union_area = len(torch.where(binarized_attributions > self.iou_threshold)[
+                         0]) + len(torch.where(bb_mask == 1)[0]) - intersection_area
+        assert intersection_area >= 0
+        assert union_area >= 0
+        if union_area == 0:
+            self.fractions.append(torch.tensor(0.0))
+        else:
+            self.defined_idxs.append(len(self.fractions))
+            self.fractions.append(torch.tensor(intersection_area/union_area))
+        
 
 """
 Source: https://github.com/stevenstalder/NN-Explainer 
@@ -261,8 +380,13 @@ class GroupedAccuracyMetric(torchmetrics.Metric):
 
     def update(self, logits, labels, groups):
         _, predictions = torch.max(logits, 1)
+        # print("GROUP ACC TESTING:")
+        labels = torch.argmax(labels, dim=1)
         for i, group in enumerate(groups):
             group_idx = int(group.item())
+            # print("  Logits:", logits)
+            # print("  Predictions:", predictions)
+            # print("  Labels:", labels)
             self.group_correct[group_idx] += (predictions[i] == labels[i]).item()
             self.group_total[group_idx] += 1
 
@@ -274,3 +398,21 @@ class GroupedAccuracyMetric(torchmetrics.Metric):
             else:
                 group_accuracies[group_name] = torch.tensor(0.0)
         return group_accuracies
+    
+    def save(self, model, classifier_type, dataset):
+        """
+        Saves the computed group accuracies to a file
+
+        Args:
+        model (str): Name of the model
+        classifier_type (str): Type of classifier
+        dataset (str): Name of the dataset
+        """
+        filename = f"{model}_{classifier_type}_{dataset}_group_accuracies.txt"
+        with open(filename, "w") as f:
+            for i, group_name in enumerate(self.group_names):
+                if self.group_total[i] > 0:
+                    accuracy = self.group_correct[i] / self.group_total[i]
+                else:
+                    accuracy = 0.0  # Default to 0 if no data for group
+                f.write(f"{group_name}: {accuracy:.4f}\n")

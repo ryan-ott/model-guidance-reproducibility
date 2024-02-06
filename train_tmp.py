@@ -83,6 +83,7 @@ def eval_model(model, attributor, loader, num_batches, num_classes, loss_fn, wri
             writer.add_scalar("bbiou", metric_vals["BB-IoU"], epoch)
     return metric_vals
 
+
 def main(args):
     """
     Main function to train and evaluate the model based on the provided arguments
@@ -144,7 +145,7 @@ def main(args):
     optimize_explanation_str += "dilated" if args.box_dilation_percentage > 0 else ""
 
     out_name = model_prefix + "_" + optimize_explanation_str + "_attr" + str(args.attribution_method) + "_locloss" + str(args.localization_loss_fn) + "_orig" + orig_name + "_resnet50" + "_lr" + str(
-        args.learning_rate) + "_sll" + str(args.localization_loss_lambda) + "_layer" + str(args.layer)
+        args.learning_rate) + "_sll" + str(args.localization_loss_lambda) + "_layer" + str(args.layer) + '_sub'
     if args.annotated_fraction < 1.0:
         out_name += f"limited{args.annotated_fraction}"
     if args.box_dilation_percentage > 0:
@@ -167,11 +168,11 @@ def main(args):
     
     root = os.path.join(args.data_path, args.dataset, "processed")
     train_data = datasets.VOCDetectParsed(
-        root=root, image_set="train", transform=transformer, annotated_fraction=args.annotated_fraction)
+        root=root, image_set="train_sub", transform=transformer, annotated_fraction=args.annotated_fraction)
     val_data = datasets.VOCDetectParsed(
         root=root, image_set="val", transform=transformer)
     test_data = datasets.VOCDetectParsed(
-        root=root, image_set="test", transform=transformer)
+        root=root, image_set="test_sub", transform=transformer)
 
     print(f"Train data size: {len(train_data)}")
     print(f"Val data size: {len(val_data)}")
@@ -234,7 +235,6 @@ def main(args):
             logits, features = model_activator(train_X)
             loss = loss_fn(logits, train_y)
             batch_loss += loss
-            print("Batch CE loss: ", batch_loss)
             total_class_loss += loss.detach()
 
             if args.optimize_explanations:
@@ -249,17 +249,16 @@ def main(args):
                     bb_list = utils.filter_bbs(
                         train_bbs[img_idx], gt_classes[img_idx])
                     #print("BB_LIST:", bb_list)
-                    print()
+                    area = utils.get_bb_area(bb_list)
                     if args.box_dilation_percentage > 0:
                         bb_list = utils.enlarge_bb(
                             bb_list, percentage=args.box_dilation_percentage)
-                    localization_loss += loss_loc(attributions[img_idx], bb_list)
+                    localization_loss += loss_loc(attributions[img_idx], bb_list, area, args.alpha)
                 batch_loss += args.localization_loss_lambda*localization_loss
                 if torch.is_tensor(localization_loss):
                     total_localization_loss += localization_loss.detach()
                 else:
                     total_localization_loss += localization_loss
-            print("Batch loc loss: ", total_localization_loss)
             batch_loss.backward()
             total_loss += batch_loss.detach()
             optimizer.step()
@@ -316,32 +315,33 @@ def main(args):
         save_path, f"model_checkpoint_f1_best.pt"))
 
 
-# parser = argparse.ArgumentParser()
-# parser.add_argument("--model_backbone", type=str, choices=["bcos", "xdnn", "vanilla"], required=True, help="Model backbone to train.")
-# parser.add_argument("--model_path", type=str, default=None, help="Path to checkpoint to fine tune from. When None, a model is trained starting from ImageNet pre-trained weights.")
-# parser.add_argument("--data_path", type=str, default="datasets/", help="Path to datasets.")
-# parser.add_argument("--total_epochs", type=int, default=100, help="Number of epochs to train for.")
-# parser.add_argument("--learning_rate", type=float, default=1e-5, help="Learning rate to use.")
-# parser.add_argument("--log_path", type=str, default=None, help="Path to save TensorBoard logs.")
-# parser.add_argument("--save_path", type=str, default="checkpoints/", help="Path to save trained models.")
-# parser.add_argument("--seed", type=int, default=0, help="Random seed to use.")
-# parser.add_argument("--train_batch_size", type=int, default=16, help="Batch size to use for training.")
-# parser.add_argument("--dataset", type=str, required=True,
-#                     choices=["VOC2007", "COCO2014"], help="Dataset to train on.")
-# parser.add_argument("--localization_loss_lambda", type=float, default=1.0, help="Lambda to use to weight localization loss.")
-# parser.add_argument("--layer", type=str, default="Input",
-#                     choices=["Input", "Final", "Mid1", "Mid2", "Mid3"], help="Layer of the model to compute and optimize attributions on.")
-# parser.add_argument("--localization_loss_fn", type=str, default=None,
-#                     choices=["Energy", "L1", "RRR", "PPCE"], help="Localization loss function to use.")
-# parser.add_argument("--attribution_method", type=str, default=None,
-#                     choices=["BCos", "GradCam", "IxG"], help="Attribution method to use for optimization.")
-# parser.add_argument("--optimize_explanations",
-#                     action="store_true", default=False, help="Flag for optimizing attributions. When False, a model is trained just using the classification loss.")
-# parser.add_argument("--min_fscore", type=float, default=-1, help="Minimum F-Score the best model so far must have to continue training. If the best F-Score drops below this threshold, stops training early.")
-# parser.add_argument("--pareto", action="store_true", default=False, help="Flag to save Pareto front of models based on F-Score, EPG Score, and IoU Score.")
-# parser.add_argument("--annotated_fraction", type=float, default=1.0, help="Fraction of training dataset from which bounding box annotations are to be used.")
-# parser.add_argument("--evaluation_frequency", type=int, default=1, help="Frequency (number of epochs) at which to evaluate the current model.")
-# parser.add_argument("--eval_batch_size", type=int, default=4, help="Batch size to use for evaluation.")
-# parser.add_argument("--box_dilation_percentage", type=float, default=0, help="Fraction of dilation to use for bounding boxes when training.")
-# args = parser.parse_args()
-# main(args)
+parser = argparse.ArgumentParser()
+parser.add_argument("--model_backbone", type=str, choices=["bcos", "xdnn", "vanilla"], required=True, help="Model backbone to train.")
+parser.add_argument("--model_path", type=str, default=None, help="Path to checkpoint to fine tune from. When None, a model is trained starting from ImageNet pre-trained weights.")
+parser.add_argument("--data_path", type=str, default="datasets/", help="Path to datasets.")
+parser.add_argument("--alpha", type=float, default=None, help="alpha value for modified energy loss")
+parser.add_argument("--total_epochs", type=int, default=100, help="Number of epochs to train for.")
+parser.add_argument("--learning_rate", type=float, default=1e-5, help="Learning rate to use.")
+parser.add_argument("--log_path", type=str, default=None, help="Path to save TensorBoard logs.")
+parser.add_argument("--save_path", type=str, default="checkpoints/", help="Path to save trained models.")
+parser.add_argument("--seed", type=int, default=0, help="Random seed to use.")
+parser.add_argument("--train_batch_size", type=int, default=16, help="Batch size to use for training.")
+parser.add_argument("--dataset", type=str, required=True,
+                    choices=["VOC2007", "COCO2014"], help="Dataset to train on.")
+parser.add_argument("--localization_loss_lambda", type=float, default=1.0, help="Lambda to use to weight localization loss.")
+parser.add_argument("--layer", type=str, default="Input",
+                    choices=["Input", "Final", "Mid1", "Mid2", "Mid3"], help="Layer of the model to compute and optimize attributions on.")
+parser.add_argument("--localization_loss_fn", type=str, default=None,
+                    choices=["Energy", "L1", "RRR", "PPCE"], help="Localization loss function to use.")
+parser.add_argument("--attribution_method", type=str, default=None,
+                    choices=["BCos", "GradCam", "IxG"], help="Attribution method to use for optimization.")
+parser.add_argument("--optimize_explanations",
+                    action="store_true", default=False, help="Flag for optimizing attributions. When False, a model is trained just using the classification loss.")
+parser.add_argument("--min_fscore", type=float, default=-1, help="Minimum F-Score the best model so far must have to continue training. If the best F-Score drops below this threshold, stops training early.")
+parser.add_argument("--pareto", action="store_true", default=False, help="Flag to save Pareto front of models based on F-Score, EPG Score, and IoU Score.")
+parser.add_argument("--annotated_fraction", type=float, default=1.0, help="Fraction of training dataset from which bounding box annotations are to be used.")
+parser.add_argument("--evaluation_frequency", type=int, default=1, help="Frequency (number of epochs) at which to evaluate the current model.")
+parser.add_argument("--eval_batch_size", type=int, default=4, help="Batch size to use for evaluation.")
+parser.add_argument("--box_dilation_percentage", type=float, default=0, help="Fraction of dilation to use for bounding boxes when training.")
+args = parser.parse_args()
+main(args)
