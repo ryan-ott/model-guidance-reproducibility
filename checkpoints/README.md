@@ -1,0 +1,1 @@
+## For the checkpoint, please upload the checkpoint file provided via WeTransfer to the directory "checkpoints/"
