@@ -234,7 +234,6 @@ def main(args):
             logits, features = model_activator(train_X)
             loss = loss_fn(logits, train_y)
             batch_loss += loss
-            print("Batch CE loss: ", batch_loss)
             total_class_loss += loss.detach()
 
             if args.optimize_explanations:
@@ -258,7 +257,6 @@ def main(args):
                     total_localization_loss += localization_loss.detach()
                 else:
                     total_localization_loss += localization_loss
-            print("Batch loc loss: ", total_localization_loss)
             batch_loss.backward()
             total_loss += batch_loss.detach()
             optimizer.step()
