@@ -4,7 +4,7 @@
 
 ## Setup
 ### Prerequisites
-All the required packages can be installed using conda with the provided [environment.yml INSERTLINK]() file. 
+All the required packages can be installed using conda with the provided [environment.yml](environment.yml) file. 
 
 ### Data, Weights, and Model Training
 Please refer to the [original repositiory by Rao et al. (2023)](https://github.com/sukrutrao/Model-Guidance?tab=readme-ov-file) for further details.
