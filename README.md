@@ -1,21 +1,12 @@
-# FACT-AI 2024
+# Studying How to Efficiently and Effectively Guide Models with Explanations - A Reproducibility Study
 
-## Steps for running the results notebook
+# TMLR/ MLRC Submission
 
-1. Clone this GitHub repository to your local machine
-   ```
-   git clone https://github.com/Ryan-Ott/FACT-AI.git
-   ```
+## Setup
+### Prerequisites
+All the required packages can be installed using conda with the provided [environment.yml INSERTLINK]() file. 
 
-3. Download and extract the zip files shared through the Google Drive link
+### Data, Weights, and Model Training
+Please refer to the [original repositiory by Rao et al. (2023)](https://github.com/sukrutrao/Model-Guidance?tab=readme-ov-file) for further details.
 
-   - You should find the following three archive files: `datasets.zip`, `checkpoints.zip`, `weights.zip`
-   - You should extract all files under the root directory of the cloned repo
-   - Note: sometimes it can happen that the contents of the zip files from GitHub get corrupted. If you experience this problem, please let us know and we'll figure out a way to send you the the appropriate files.
 
-5. Open the `results.ipynb` notebook and you should be able to run all cells
-
-   ```
-   jupyter notebook results.ipynb
-   ```
-   - The notebook contains code to reproduce the quantitative and qualitative results from our paper. Furthermore, it reproduces the results from our extensions.
