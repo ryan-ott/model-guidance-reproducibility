@@ -642,13 +642,14 @@ def load_seg_json(root):
 
 def plot_seg(plot_data, baseline_data):
     plt.rcParams['font.family'] = 'serif'
-    markers = {"baseline": "X", "Seg": "o", "BB": "v"}
-    colours = {"baseline": "#FFFFFF", "Seg": "#ED3E63", "BB": "#39D095"}
+    markers = {"baseline": "X", "100% BB": "o", "8% BB": "v", "8% Seg": "p"}
+    colours = {"baseline": "#FFFFFF", "100% BB": "#ED3E63",
+               "8% BB": "#39D095", "8% Seg": "#FECB5B"}
 
     plt.figure(figsize=(6, 4), dpi=300)
     ax = plt.gca()
 
-    ax.set_xlim(75, 83)
+    ax.set_xlim(75, 85)
     ax.set_ylim(50, 78)
     ax.set_ylabel("EPG Score (%)", fontsize=12)
     ax.set_xlabel("F1 Score (%)", fontsize=12)
@@ -660,7 +661,7 @@ def plot_seg(plot_data, baseline_data):
         'bcos', 'BCos', 'Input')], markers, colours, score_type="BB-Loc")
 
     # Plot data for both loss functions
-    for config in ["BB", "Seg"]:
+    for config in ["100% BB", "8% BB", "8% Seg"]:
         pareto_metrics = plot_data[config]
         pareto_points = np.array(
             [(model["F-Score"]*100, model["BB-Loc"]*100) for model in pareto_metrics])
@@ -676,7 +677,7 @@ def plot_seg(plot_data, baseline_data):
     ax.grid(True)
     handles, labels = ax.get_legend_handles_labels()
     ax.legend(handles, labels, loc='lower center', bbox_to_anchor=(
-        0.5, 0.91), ncol=3, fontsize=9, frameon=True, framealpha=1)
+        0.5, 0.91), ncol=len(markers), fontsize=9, frameon=True, framealpha=1)
     ax.set_title("Segmentation Mask vs Bounding Box Annotations")
 
     plt.tight_layout()
